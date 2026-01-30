@@ -65,19 +65,23 @@
   <script type="importmap">
 {
   "imports": {
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
     "react/": "https://esm.sh/react@^19.2.4/",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.7"
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.93.3",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
 </head>
   <body>
     <div id="root"></div>
+    <!-- Entry point for the application -->
+    <script type="module" src="./index.tsx"></script>
     <script>
       console.log("%cNEXUS 4 ALL", "color: #22d3ee; font-size: 30px; font-weight: bold; font-family: 'Orbitron', sans-serif;");
-      console.log("%cSYSTEM STATUS: READY FOR DEPLOYMENT", "color: #10b981; font-weight: bold;");
+      console.log("%cSYSTEM STATUS: CONNECTED", "color: #10b981; font-weight: bold;");
     </script>
   </body>
 </html>
