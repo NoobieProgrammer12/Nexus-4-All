@@ -28,7 +28,6 @@ export const LanguageContext = createContext<LanguageContextType>({
   setLanguage: () => {}
 });
 
-// Production ready: No initial test users
 const INITIAL_USERS: User[] = [];
 
 export default function App() {
@@ -144,33 +143,33 @@ export default function App() {
   };
 
   const handleLogin = (userData: Partial<User>, mode: 'login' | 'signup') => {
-    const existing = usersRegistry.find(u => u.email === userData.email || u.id === userData.id);
-    if (mode === 'login' && existing) {
-      setUser(existing);
-    } else {
-      const newUser: User = {
-        id: userData.id || 'u' + Date.now(),
-        username: userData.username || 'Explorer',
-        email: userData.email,
-        avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.username}`,
-        isGuest: false,
-        isAdmin: userData.isAdmin || false,
-        joinedForumIds: ['f-1'],
-        createdForumIds: [],
-        friendsCount: userData.friendIds?.length || 0,
-        postStreak: userData.postStreak || 0,
-        friendIds: userData.friendIds || []
-      };
-      
-      const registryIndex = usersRegistry.findIndex(u => u.id === newUser.id);
-      if (registryIndex !== -1) {
-        setUsersRegistry(prev => prev.map((u, i) => i === registryIndex ? newUser : u));
-      } else {
-        setUsersRegistry([...usersRegistry, newUser]);
+    if (mode === 'login' && userData.id) {
+      const existing = usersRegistry.find(u => u.id === userData.id);
+      if (existing) {
+        setUser(existing);
+        showToast(`Welcome back, ${existing.username}`);
+        return;
       }
-      
-      setUser(newUser);
     }
+
+    // Creating new user or finalizing guest
+    const newUser: User = {
+      id: userData.id || 'u' + Date.now(),
+      username: userData.username || 'Explorer',
+      email: userData.email || '',
+      avatar: userData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${userData.username || Date.now()}`,
+      isGuest: userData.isGuest || false,
+      isAdmin: userData.isAdmin || false,
+      joinedForumIds: [],
+      createdForumIds: [],
+      friendsCount: 0,
+      postStreak: 0,
+      friendIds: []
+    };
+    
+    setUsersRegistry(prev => [...prev, newUser]);
+    setUser(newUser);
+    showToast(mode === 'signup' ? "Nexus Account Established" : "Signal Synchronized");
   };
 
   if (!isLoaded) return <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center font-orbitron text-cyan-400 text-center px-4">ESTABLISHING CONNECTION TO NEXUS...</div>;
@@ -179,8 +178,8 @@ export default function App() {
     <LanguageContext.Provider value={{ language, t, setLanguage }}>
       {systemToast && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[10000] w-full max-w-sm pointer-events-none">
-          <div className="mx-4 bg-[#1a1f2b] border border-cyan-500/50 rounded-2xl p-4 shadow-2xl animate-in fade-in slide-in-from-top-4">
-            <p className="text-sm font-bold text-white uppercase font-orbitron text-center">{systemToast.message}</p>
+          <div className="mx-4 bg-[#1a1f2b]/95 backdrop-blur border border-cyan-500/50 rounded-2xl p-4 shadow-[0_0_30px_rgba(34,211,238,0.2)] animate-in fade-in slide-in-from-top-4">
+            <p className="text-sm font-bold text-white uppercase font-orbitron text-center tracking-widest">{systemToast.message}</p>
           </div>
         </div>
       )}
@@ -230,7 +229,11 @@ export default function App() {
                   allPosts={posts} 
                   usersRegistry={usersRegistry}
                   pendingRequests={friendRequests}
-                  onUpdateAvatar={(b) => setUser({...user, avatar: b})}
+                  onUpdateAvatar={(b) => {
+                    const updatedUser = {...user, avatar: b};
+                    setUser(updatedUser);
+                    setUsersRegistry(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+                  }}
                   onBack={() => setCurrentView('feed')}
                   onBanUser={() => {}}
                   onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
@@ -245,7 +248,7 @@ export default function App() {
                    <h1 className="text-2xl font-orbitron text-cyan-400 mb-4">{t('settings')}</h1>
                    <div className="space-y-6">
                      <div className="bg-[#151921] border border-gray-800 p-6 rounded-2xl">
-                       <h2 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">Communication Language</h2>
+                       <h2 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-4">Communication Interface</h2>
                        <div className="flex gap-4">
                          {(['en', 'es', 'pt'] as NexusLanguage[]).map(lang => (
                            <button 
@@ -261,7 +264,7 @@ export default function App() {
                      <button onClick={() => {
                         localStorage.removeItem(`${STORAGE_KEY}_active_user`);
                         setUser(null);
-                     }} className="w-full bg-red-500/10 text-red-500 px-4 py-4 rounded-xl border border-red-500/20 font-bold hover:bg-red-500 hover:text-white transition-all uppercase tracking-widest text-xs">
+                     }} className="w-full bg-red-500/10 text-red-500 px-4 py-4 rounded-xl border border-red-500/20 font-bold hover:bg-red-500 hover:text-white transition-all uppercase tracking-[0.2em] font-orbitron text-[10px]">
                        {t('logout')}
                      </button>
                    </div>
