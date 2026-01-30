@@ -45,7 +45,7 @@ export default function App() {
 
   const cloudEnabled = isCloudActive();
 
-  // Load initial data (Supabase or LocalStorage)
+  // 1. CARGA INICIAL DE DATOS (Prioriza Supabase si está disponible)
   useEffect(() => {
     const initData = async () => {
       try {
@@ -58,6 +58,7 @@ export default function App() {
           if (p) setPosts(p);
           if (u) setUsersRegistry(u);
         } else {
+          // Fallback a LocalStorage si no hay Supabase
           const regRaw = localStorage.getItem(`${STORAGE_KEY}_registry`);
           const p = localStorage.getItem(`${STORAGE_KEY}_posts`);
           const f = localStorage.getItem(`${STORAGE_KEY}_forums`);
@@ -66,9 +67,11 @@ export default function App() {
           if (p) setPosts(JSON.parse(p));
         }
 
+        // Recuperar sesión de usuario (Siempre de LocalStorage para persistencia de sesión local)
         const active = localStorage.getItem(`${STORAGE_KEY}_active_user`);
         if (active) setUser(JSON.parse(active));
         
+        // Carga de metadatos sociales
         const n = localStorage.getItem(`${STORAGE_KEY}_notifications`);
         const fr = localStorage.getItem(`${STORAGE_KEY}_friend_requests`);
         const m = localStorage.getItem(`${STORAGE_KEY}_messages`);
@@ -78,7 +81,7 @@ export default function App() {
         setMessages(m ? JSON.parse(m) : []);
         setReports(r ? JSON.parse(r) : []);
       } catch (e) {
-        console.error("Nexus Load Error", e);
+        console.error("Nexus Sync Error:", e);
       } finally {
         setIsLoaded(true);
       }
@@ -86,20 +89,21 @@ export default function App() {
     initData();
   }, [cloudEnabled]);
 
-  // Real-time Subscriptions (only if cloud is enabled)
+  // 2. SUSCRIPCIONES EN TIEMPO REAL (Supabase)
   useEffect(() => {
     if (!cloudEnabled || !supabase) return;
 
-    const postSub = supabase.channel('posts-all')
+    const postSub = supabase.channel('posts-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, payload => {
         if (payload.eventType === 'INSERT') setPosts(prev => [payload.new as Post, ...prev]);
         if (payload.eventType === 'DELETE') setPosts(prev => prev.filter(p => p.id !== payload.old.id));
       }).subscribe();
 
-    const forumSub = supabase.channel('forums-all')
+    const forumSub = supabase.channel('forums-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forums' }, payload => {
         if (payload.eventType === 'INSERT') setForums(prev => [payload.new as Forum, ...prev]);
         if (payload.eventType === 'UPDATE') setForums(prev => prev.map(f => f.id === payload.new.id ? payload.new as Forum : f));
+        if (payload.eventType === 'DELETE') setForums(prev => prev.filter(f => f.id !== payload.old.id));
       }).subscribe();
 
     return () => {
@@ -123,7 +127,7 @@ export default function App() {
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [reportingPostId, setReportingPostId] = useState<string | null>(null);
 
-  // Persistence (Always update local for backup and user session)
+  // Guardado de respaldo en LocalStorage
   useEffect(() => {
     if (!isLoaded) return;
     localStorage.setItem(`${STORAGE_KEY}_active_user`, JSON.stringify(user));
@@ -137,6 +141,16 @@ export default function App() {
     localStorage.setItem(`${STORAGE_KEY}_messages`, JSON.stringify(messages));
     localStorage.setItem(`${STORAGE_KEY}_reports`, JSON.stringify(reports));
   }, [user, usersRegistry, posts, forums, notifications, friendRequests, messages, reports, isLoaded, cloudEnabled]);
+
+  // LOGICA DE BÚSQUEDA CORREGIDA
+  const updateSearchQuery = (q: string) => {
+    setSearchQuery(q);
+    if (q.trim().length > 0) {
+      setCurrentView('search');
+    } else if (currentView === 'search') {
+      setCurrentView('feed');
+    }
+  };
 
   const handleReportPost = async (postId: string, reason: string) => {
     const post = posts.find(p => p.id === postId);
@@ -207,15 +221,6 @@ export default function App() {
     setUser(finalUser);
     if (cloudEnabled && supabase && !finalUser.isGuest) await supabase.from('users_registry').insert(finalUser);
     showToast(mode === 'signup' ? "Nexus Account Established" : "Signal Synchronized");
-  };
-
-  const updateSearchQuery = (q: string) => {
-    setSearchQuery(q);
-    if (q.trim().length > 0) {
-      setCurrentView('search');
-    } else if (currentView === 'search') {
-      setCurrentView('feed');
-    }
   };
 
   if (!isLoaded) return <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center font-orbitron text-cyan-400 text-center px-4">ESTABLISHING CONNECTION TO NEXUS...</div>;
