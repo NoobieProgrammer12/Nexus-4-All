@@ -47,7 +47,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      const reg = localStorage.getItem(`${STORAGE_KEY}_registry`);
+      const regRaw = localStorage.getItem(`${STORAGE_KEY}_registry`);
       const active = localStorage.getItem(`${STORAGE_KEY}_active_user`);
       const p = localStorage.getItem(`${STORAGE_KEY}_posts`);
       const f = localStorage.getItem(`${STORAGE_KEY}_forums`);
@@ -56,8 +56,18 @@ export default function App() {
       const m = localStorage.getItem(`${STORAGE_KEY}_messages`);
       const r = localStorage.getItem(`${STORAGE_KEY}_reports`);
       
-      let loadedRegistry = reg ? JSON.parse(reg) : INITIAL_USERS;
-      setUsersRegistry(loadedRegistry);
+      let loadedRegistry: User[] = regRaw ? JSON.parse(regRaw) : INITIAL_USERS;
+      
+      // LIMPIEZA AUTOMÁTICA DE DUPLICADOS (Saneamiento de base de datos local)
+      const uniqueUsers: User[] = [];
+      const seenEmails = new Set();
+      loadedRegistry.forEach(u => {
+        if (!seenEmails.has(u.email?.toLowerCase())) {
+          seenEmails.add(u.email?.toLowerCase());
+          uniqueUsers.push(u);
+        }
+      });
+      setUsersRegistry(uniqueUsers);
 
       if (active) setUser(JSON.parse(active));
       setForums(f ? JSON.parse(f) : []);
@@ -135,6 +145,10 @@ export default function App() {
       const post = posts.find(p => p.id === r.postId);
       return post?.authorId !== userId;
     }));
+    if (user?.id === userId) {
+      setUser(null);
+      localStorage.removeItem(`${STORAGE_KEY}_active_user`);
+    }
     showToast("Explorer banned and wiped from Nexus.");
   };
 
@@ -187,15 +201,40 @@ export default function App() {
   };
 
   const handleLogin = (userData: Partial<User>, mode: 'login' | 'signup') => {
-    if (mode === 'login' && userData.id) {
-      const existing = usersRegistry.find(u => u.id === userData.id);
+    if (mode === 'login') {
+      const existing = usersRegistry.find(u => 
+        (userData.id && u.id === userData.id) || 
+        (userData.email && u.email?.toLowerCase() === userData.email.toLowerCase())
+      );
       if (existing) {
         setUser(existing);
         showToast(`Welcome back, ${existing.username}`);
         return;
       }
+      
+      // Caso especial para admin override si no existe en registro
+      if (userData.id === 'admin') {
+         const adminUser: User = {
+           id: 'admin',
+           username: 'NexusAdmin',
+           email: 'admin@nexus.com',
+           avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin',
+           isGuest: false,
+           isAdmin: true,
+           joinedForumIds: [],
+           createdForumIds: [],
+           friendsCount: 0,
+           postStreak: 0,
+           friendIds: []
+         };
+         setUsersRegistry(prev => [...prev, adminUser]);
+         setUser(adminUser);
+         showToast("Admin Terminal Active");
+         return;
+      }
     }
 
+    // CREACIÓN DE NUEVO USUARIO
     const newUser: User = {
       id: userData.id || 'u' + Date.now(),
       username: userData.username || 'Explorer',
@@ -382,6 +421,7 @@ export default function App() {
                      <button onClick={() => {
                         localStorage.removeItem(`${STORAGE_KEY}_active_user`);
                         setUser(null);
+                        setCurrentView('feed');
                      }} className="w-full bg-red-500/10 text-red-500 px-4 py-4 rounded-xl border border-red-500/20 font-bold hover:bg-red-500 hover:text-white transition-all uppercase tracking-[0.2em] font-orbitron text-[10px]">
                        {t('logout')}
                      </button>
