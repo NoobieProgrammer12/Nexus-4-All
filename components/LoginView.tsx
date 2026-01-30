@@ -27,7 +27,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
     setErrorMsg(null);
     setLoading(true);
 
-    // Initial registry check
+    // Initial registry check for persistence
     const existingUser = usersRegistry.find(u => u.email?.toLowerCase() === email.trim().toLowerCase());
 
     if (isLogin && !existingUser) {
@@ -48,9 +48,9 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
       return;
     }
 
-    // Trigger Real Email OTP
+    // Trigger Real Email OTP via Supabase
     if (!supabase) {
-      setErrorMsg("NEXUS CLOUD OFFLINE: Please configure Supabase keys in environment.");
+      setErrorMsg("🚨 NEXUS CLOUD OFFLINE: Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your hosting (Vercel) dashboard.");
       setLoading(false);
       return;
     }
@@ -65,7 +65,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
 
       if (error) throw error;
 
-      // Move to verification step
+      // Successful OTP initiation
       setStep('mfa');
     } catch (err: any) {
       setErrorMsg(`HANDSHAKE FAILED: ${err.message || 'System protocol error'}`);
@@ -109,7 +109,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
 
       if (error) throw error;
 
-      // Successful Handshake
+      // Finalize login session
       const existingUser = usersRegistry.find(u => u.email === email.trim());
       onLogin({
         username: isLogin && existingUser ? existingUser.username : username.trim(),
@@ -118,7 +118,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
       }, isLogin ? 'login' : 'signup');
 
     } catch (err: any) {
-      setErrorMsg("INVALID CIPHER: Please check your Gmail for the correct code.");
+      setErrorMsg("INVALID CIPHER: Please check your Gmail for the correct 6-digit code.");
       setMfaCode(['', '', '', '', '', '']);
       document.getElementById('mfa-0')?.focus();
     } finally {
@@ -215,7 +215,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-black/40 border border-gray-800 rounded-xl px-5 py-4 focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all text-white placeholder-gray-700"
-                placeholder="identity@nexus.com"
+                placeholder="identity@gmail.com"
               />
             </div>
             <div>
