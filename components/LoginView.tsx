@@ -40,14 +40,13 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
       return;
     }
 
-    // AUTH PROTOCOL
+    // PROTOCOLO DE AUTENTICACIÓN
     if (!supabase) {
-      // MODO LOCAL (FALLBACK): Si no hay Supabase, simulamos el envío para no bloquear al usuario
-      console.warn("NEXUS CLOUD OFFLINE: Using Local Handshake Protocol. Use 123456 as code.");
+      // Si no hay Supabase, pasamos directamente al código 123456
       setTimeout(() => {
         setStep('mfa');
         setLoading(false);
-      }, 1000);
+      }, 800);
       return;
     }
 
@@ -56,10 +55,14 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
         email: email.trim(),
         options: { shouldCreateUser: !isLogin },
       });
-      if (error) throw error;
+      
+      // Si falla el envío (por ejemplo, cuotas excedidas o mala config), igual permitimos avanzar
+      // para que el usuario pueda usar el código de respaldo 123456
       setStep('mfa');
     } catch (err: any) {
-      setErrorMsg(`HANDSHAKE FAILED: ${err.message}`);
+      // En lugar de bloquear, avisamos y avanzamos con protocolo local
+      console.warn("Handshake delay, switching to secondary protocol.");
+      setStep('mfa');
     } finally {
       setLoading(false);
     }
@@ -82,19 +85,20 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
     setLoading(true);
     setErrorMsg(null);
 
+    // CÓDIGO MAESTRO / FALLBACK: 123456 siempre funciona para evitar bloqueos
+    if (entered === '123456') {
+      const existingUser = usersRegistry.find(u => u.email === email.trim());
+      onLogin({
+        username: isLogin && existingUser ? existingUser.username : (username.trim() || 'Explorer'),
+        email: email.trim(),
+        isGuest: false,
+      }, isLogin ? 'login' : 'signup');
+      return;
+    }
+
     if (!supabase) {
-      // Verificación local si no hay nube (Bypass para pruebas)
-      if (entered === '123456' || entered.length === 6) {
-        const existingUser = usersRegistry.find(u => u.email === email.trim());
-        onLogin({
-          username: isLogin && existingUser ? existingUser.username : username.trim() || 'Explorer',
-          email: email.trim(),
-          isGuest: false,
-        }, isLogin ? 'login' : 'signup');
-      } else {
-        setErrorMsg("INVALID CIPHER: Use 123456 for Local Mode.");
-        setLoading(false);
-      }
+      setErrorMsg("INVALID CIPHER: Use 123456 in Local Mode.");
+      setLoading(false);
       return;
     }
 
@@ -104,7 +108,9 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
         token: entered,
         type: 'email',
       });
+      
       if (error) throw error;
+
       const existingUser = usersRegistry.find(u => u.email === email.trim());
       onLogin({
         username: isLogin && existingUser ? existingUser.username : username.trim(),
@@ -112,7 +118,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
         isGuest: false,
       }, isLogin ? 'login' : 'signup');
     } catch (err: any) {
-      setErrorMsg("INVALID CIPHER: Check your Gmail or use 123456.");
+      // Si falla la verificación real, damos pista del código local
+      setErrorMsg("VERIFICATION FAILED: Use 123456 if email did not arrive.");
       setMfaCode(['', '', '', '', '', '']);
       document.getElementById('mfa-0')?.focus();
     } finally {
@@ -195,8 +202,8 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
                 <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
               </div>
               <h2 className="text-lg font-orbitron font-bold text-white mb-1 uppercase">2-Step Verification</h2>
-              <p className="text-xs text-gray-500">Enter the cipher transmitted to your Gmail.</p>
-              {!supabase && <p className="text-[10px] text-amber-500 mt-2 uppercase font-bold">Local Mode: Use 123456</p>}
+              <p className="text-xs text-gray-500">Enter the cipher transmitted to your GMAIL.</p>
+              <p className="text-[10px] text-amber-500 mt-2 uppercase font-bold">Hint: Use 123456 to bypass</p>
             </div>
 
             <div className="grid grid-cols-6 gap-2 mb-8">
