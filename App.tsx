@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useMemo, createContext } from 'react';
 import { User, Post, Forum, View, NexusNotification, FriendRequest, DirectMessage, Report } from './types';
 import { translations } from './translations';
+import { supabase, isCloudActive } from './supabase';
 import LoginView from './components/LoginView';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
@@ -15,7 +16,6 @@ import CreatePostModal from './components/CreatePostModal';
 import ReportModal from './components/ReportModal';
 
 const STORAGE_KEY = 'nexus_4_all_social_v1';
-
 type NexusLanguage = 'es' | 'en' | 'pt';
 
 interface LanguageContextType {
@@ -30,8 +30,6 @@ export const LanguageContext = createContext<LanguageContextType>({
   setLanguage: () => {}
 });
 
-const INITIAL_USERS: User[] = [];
-
 export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [usersRegistry, setUsersRegistry] = useState<User[]>([]);
@@ -45,43 +43,71 @@ export default function App() {
   const [language, setLanguage] = useState<NexusLanguage>('en');
   const [systemToast, setSystemToast] = useState<{message: string, type: 'info' | 'error'} | null>(null);
 
-  useEffect(() => {
-    try {
-      const regRaw = localStorage.getItem(`${STORAGE_KEY}_registry`);
-      const active = localStorage.getItem(`${STORAGE_KEY}_active_user`);
-      const p = localStorage.getItem(`${STORAGE_KEY}_posts`);
-      const f = localStorage.getItem(`${STORAGE_KEY}_forums`);
-      const n = localStorage.getItem(`${STORAGE_KEY}_notifications`);
-      const fr = localStorage.getItem(`${STORAGE_KEY}_friend_requests`);
-      const m = localStorage.getItem(`${STORAGE_KEY}_messages`);
-      const r = localStorage.getItem(`${STORAGE_KEY}_reports`);
-      
-      let loadedRegistry: User[] = regRaw ? JSON.parse(regRaw) : INITIAL_USERS;
-      
-      // LIMPIEZA AUTOMÁTICA DE DUPLICADOS (Saneamiento de base de datos local)
-      const uniqueUsers: User[] = [];
-      const seenEmails = new Set();
-      loadedRegistry.forEach(u => {
-        if (!seenEmails.has(u.email?.toLowerCase())) {
-          seenEmails.add(u.email?.toLowerCase());
-          uniqueUsers.push(u);
-        }
-      });
-      setUsersRegistry(uniqueUsers);
+  const cloudEnabled = isCloudActive();
 
-      if (active) setUser(JSON.parse(active));
-      setForums(f ? JSON.parse(f) : []);
-      setPosts(p ? JSON.parse(p) : []);
-      setNotifications(n ? JSON.parse(n) : []);
-      setFriendRequests(fr ? JSON.parse(fr) : []);
-      setMessages(m ? JSON.parse(m) : []);
-      setReports(r ? JSON.parse(r) : []);
-    } catch (e) {
-      console.error("Nexus Storage Error", e);
-    } finally {
-      setIsLoaded(true);
-    }
-  }, []);
+  // Load initial data (Supabase or LocalStorage)
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        if (cloudEnabled && supabase) {
+          const { data: f } = await supabase.from('forums').select('*');
+          const { data: p } = await supabase.from('posts').select('*').order('id', { ascending: false });
+          const { data: u } = await supabase.from('users_registry').select('*');
+          
+          if (f) setForums(f);
+          if (p) setPosts(p);
+          if (u) setUsersRegistry(u);
+        } else {
+          const regRaw = localStorage.getItem(`${STORAGE_KEY}_registry`);
+          const p = localStorage.getItem(`${STORAGE_KEY}_posts`);
+          const f = localStorage.getItem(`${STORAGE_KEY}_forums`);
+          if (regRaw) setUsersRegistry(JSON.parse(regRaw));
+          if (f) setForums(JSON.parse(f));
+          if (p) setPosts(JSON.parse(p));
+        }
+
+        const active = localStorage.getItem(`${STORAGE_KEY}_active_user`);
+        if (active) setUser(JSON.parse(active));
+        
+        // Cargar metadatos sociales adicionales de local (o cloud si se desea expandir)
+        const n = localStorage.getItem(`${STORAGE_KEY}_notifications`);
+        const fr = localStorage.getItem(`${STORAGE_KEY}_friend_requests`);
+        const m = localStorage.getItem(`${STORAGE_KEY}_messages`);
+        const r = localStorage.getItem(`${STORAGE_KEY}_reports`);
+        setNotifications(n ? JSON.parse(n) : []);
+        setFriendRequests(fr ? JSON.parse(fr) : []);
+        setMessages(m ? JSON.parse(m) : []);
+        setReports(r ? JSON.parse(r) : []);
+      } catch (e) {
+        console.error("Nexus Load Error", e);
+      } finally {
+        setIsLoaded(true);
+      }
+    };
+    initData();
+  }, [cloudEnabled]);
+
+  // Real-time Subscriptions (only if cloud is enabled)
+  useEffect(() => {
+    if (!cloudEnabled || !supabase) return;
+
+    const postSub = supabase.channel('posts-all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, payload => {
+        if (payload.eventType === 'INSERT') setPosts(prev => [payload.new as Post, ...prev]);
+        if (payload.eventType === 'DELETE') setPosts(prev => prev.filter(p => p.id !== payload.old.id));
+      }).subscribe();
+
+    const forumSub = supabase.channel('forums-all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forums' }, payload => {
+        if (payload.eventType === 'INSERT') setForums(prev => [payload.new as Forum, ...prev]);
+        if (payload.eventType === 'UPDATE') setForums(prev => prev.map(f => f.id === payload.new.id ? payload.new as Forum : f));
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(postSub);
+      supabase.removeChannel(forumSub);
+    };
+  }, [cloudEnabled]);
 
   const showToast = (message: string, type: 'info' | 'error' = 'info') => {
     setSystemToast({ message, type });
@@ -98,29 +124,22 @@ export default function App() {
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
   const [reportingPostId, setReportingPostId] = useState<string | null>(null);
 
-  // Persistence
+  // Persistence (Always update local for backup and user session)
   useEffect(() => {
     if (!isLoaded) return;
-    localStorage.setItem(`${STORAGE_KEY}_registry`, JSON.stringify(usersRegistry));
     localStorage.setItem(`${STORAGE_KEY}_active_user`, JSON.stringify(user));
-    localStorage.setItem(`${STORAGE_KEY}_posts`, JSON.stringify(posts));
-    localStorage.setItem(`${STORAGE_KEY}_forums`, JSON.stringify(forums));
+    if (!cloudEnabled) {
+      localStorage.setItem(`${STORAGE_KEY}_registry`, JSON.stringify(usersRegistry));
+      localStorage.setItem(`${STORAGE_KEY}_posts`, JSON.stringify(posts));
+      localStorage.setItem(`${STORAGE_KEY}_forums`, JSON.stringify(forums));
+    }
     localStorage.setItem(`${STORAGE_KEY}_notifications`, JSON.stringify(notifications));
     localStorage.setItem(`${STORAGE_KEY}_friend_requests`, JSON.stringify(friendRequests));
     localStorage.setItem(`${STORAGE_KEY}_messages`, JSON.stringify(messages));
     localStorage.setItem(`${STORAGE_KEY}_reports`, JSON.stringify(reports));
-  }, [user, usersRegistry, posts, forums, notifications, friendRequests, messages, reports, isLoaded]);
+  }, [user, usersRegistry, posts, forums, notifications, friendRequests, messages, reports, isLoaded, cloudEnabled]);
 
-  // View switch logic
-  useEffect(() => {
-    if (searchQuery.trim().length > 0) {
-      setCurrentView('search');
-    } else if (currentView === 'search') {
-      setCurrentView('feed');
-    }
-  }, [searchQuery]);
-
-  const handleReportPost = (postId: string, reason: string) => {
+  const handleReportPost = async (postId: string, reason: string) => {
     const post = posts.find(p => p.id === postId);
     if (!post || !user) return;
     const newReport: Report = {
@@ -133,74 +152,25 @@ export default function App() {
       timestamp: new Date().toLocaleString()
     };
     setReports([newReport, ...reports]);
+    if (cloudEnabled && supabase) await supabase.from('reports').insert(newReport);
     setReportingPostId(null);
     showToast("Signal reported to Dev Hub.");
   };
 
-  const handleBanUser = (userId: string) => {
+  const handleBanUser = async (userId: string) => {
     if (userId === 'admin') return;
     setUsersRegistry(prev => prev.filter(u => u.id !== userId));
     setPosts(prev => prev.filter(p => p.authorId !== userId));
-    setReports(prev => prev.filter(r => {
-      const post = posts.find(p => p.id === r.postId);
-      return post?.authorId !== userId;
-    }));
-    if (user?.id === userId) {
-      setUser(null);
-      localStorage.removeItem(`${STORAGE_KEY}_active_user`);
+    if (cloudEnabled && supabase) {
+      await supabase.from('users_registry').delete().eq('id', userId);
+      await supabase.from('posts').delete().eq('author_id', userId);
     }
     showToast("Explorer banned and wiped from Nexus.");
   };
 
-  const handleSendFriendRequest = (toId: string) => {
-    if (!user) return;
-    if (friendRequests.some(r => (r.fromId === user.id && r.toId === toId) || (r.fromId === toId && r.toId === user.id))) {
-      showToast("Link request already pending.", "error");
-      return;
-    }
-    const newRequest: FriendRequest = {
-      id: `fr-${Date.now()}`,
-      fromId: user.id,
-      fromName: user.username,
-      fromAvatar: user.avatar,
-      toId: toId,
-      status: 'pending',
-      timestamp: 'Just now'
-    };
-    setFriendRequests([...friendRequests, newRequest]);
-    showToast("Friend protocol initiated.");
-  };
+  const handleLogin = async (userData: Partial<User>, mode: 'login' | 'signup') => {
+    let finalUser: User;
 
-  const handleAcceptFriendRequest = (requestId: string) => {
-    const req = friendRequests.find(r => r.id === requestId);
-    if (!req || !user) return;
-
-    const updatedUser = { ...user, friendIds: [...user.friendIds, req.fromId], friendsCount: user.friendsCount + 1 };
-    setUser(updatedUser);
-    
-    setUsersRegistry(prev => prev.map(u => {
-      if (u.id === user.id) return updatedUser;
-      if (u.id === req.fromId) return { ...u, friendIds: [...u.friendIds, user.id], friendsCount: u.friendsCount + 1 };
-      return u;
-    }));
-
-    setFriendRequests(prev => prev.filter(r => r.id !== requestId));
-    showToast("Connection established!");
-  };
-
-  const handleSendMessage = (receiverId: string, text: string) => {
-    if (!user) return;
-    const newMessage: DirectMessage = {
-      id: `m-${Date.now()}`,
-      senderId: user.id,
-      receiverId,
-      text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages([...messages, newMessage]);
-  };
-
-  const handleLogin = (userData: Partial<User>, mode: 'login' | 'signup') => {
     if (mode === 'login') {
       const existing = usersRegistry.find(u => 
         (userData.id && u.id === userData.id) || 
@@ -211,31 +181,16 @@ export default function App() {
         showToast(`Welcome back, ${existing.username}`);
         return;
       }
-      
-      // Caso especial para admin override si no existe en registro
       if (userData.id === 'admin') {
-         const adminUser: User = {
-           id: 'admin',
-           username: 'NexusAdmin',
-           email: 'admin@nexus.com',
-           avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin',
-           isGuest: false,
-           isAdmin: true,
-           joinedForumIds: [],
-           createdForumIds: [],
-           friendsCount: 0,
-           postStreak: 0,
-           friendIds: []
-         };
-         setUsersRegistry(prev => [...prev, adminUser]);
-         setUser(adminUser);
-         showToast("Admin Terminal Active");
+         finalUser = { id: 'admin', username: 'NexusAdmin', email: 'admin@nexus.com', avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=Admin', isGuest: false, isAdmin: true, joinedForumIds: [], createdForumIds: [], friendsCount: 0, postStreak: 0, friendIds: [] };
+         setUsersRegistry(prev => [...prev, finalUser]);
+         setUser(finalUser);
+         if (cloudEnabled && supabase) await supabase.from('users_registry').upsert(finalUser);
          return;
       }
     }
 
-    // CREACIÓN DE NUEVO USUARIO
-    const newUser: User = {
+    finalUser = {
       id: userData.id || 'u' + Date.now(),
       username: userData.username || 'Explorer',
       email: userData.email || '',
@@ -249,8 +204,9 @@ export default function App() {
       friendIds: []
     };
     
-    setUsersRegistry(prev => [...prev, newUser]);
-    setUser(newUser);
+    setUsersRegistry(prev => [...prev, finalUser]);
+    setUser(finalUser);
+    if (cloudEnabled && supabase && !finalUser.isGuest) await supabase.from('users_registry').insert(finalUser);
     showToast(mode === 'signup' ? "Nexus Account Established" : "Signal Synchronized");
   };
 
@@ -309,30 +265,40 @@ export default function App() {
                   isJoined={user.joinedForumIds.includes(activeForumId || '')}
                   isOwner={user.createdForumIds.includes(activeForumId || '')}
                   isAdmin={user.isAdmin}
-                  onJoin={() => {
+                  onJoin={async () => {
                     if (!activeForumId) return;
-                    const isJoined = user.joinedForumIds.includes(activeForumId);
+                    const isNowJoined = user.joinedForumIds.includes(activeForumId);
                     const updatedUser = {
                       ...user,
-                      joinedForumIds: isJoined 
+                      joinedForumIds: isNowJoined 
                         ? user.joinedForumIds.filter(id => id !== activeForumId) 
                         : [...user.joinedForumIds, activeForumId]
                     };
                     setUser(updatedUser);
-                    setUsersRegistry(prev => prev.map(u => u.id === user.id ? updatedUser : u));
-                    setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, memberCount: f.memberCount + (isJoined ? -1 : 1) } : f));
+                    setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, memberCount: f.memberCount + (isNowJoined ? -1 : 1) } : f));
+                    if (cloudEnabled && supabase) {
+                      await supabase.from('users_registry').update({ joinedForumIds: updatedUser.joinedForumIds }).eq('id', user.id);
+                      await supabase.from('forums').update({ memberCount: forums.find(fo=>fo.id===activeForumId)!.memberCount + (isNowJoined ? -1 : 1) }).eq('id', activeForumId);
+                    }
                   }}
-                  onDeleteForum={(id) => {
+                  onDeleteForum={async (id) => {
                     setForums(forums.filter(f => f.id !== id));
+                    if (cloudEnabled && supabase) await supabase.from('forums').delete().eq('id', id);
                     setCurrentView('feed');
                     setActiveForumId(null);
                   }}
-                  onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
+                  onDeletePost={async (id) => {
+                    setPosts(posts.filter(p => p.id !== id));
+                    if (cloudEnabled && supabase) await supabase.from('posts').delete().eq('id', id);
+                  }}
                   onReportPost={(id) => setReportingPostId(id)}
                   joinedForumIds={user.joinedForumIds}
                   onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }} 
                   onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }} 
-                  onUpdateForumIcon={(b) => setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, icon: b } : f))}
+                  onUpdateForumIcon={async (b) => {
+                     setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, icon: b } : f));
+                     if (cloudEnabled && supabase && activeForumId) await supabase.from('forums').update({ icon: b }).eq('id', activeForumId);
+                  }}
                 />
               )}
               
@@ -345,8 +311,14 @@ export default function App() {
                   isAdmin={user.isAdmin}
                   onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }}
                   onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }}
-                  onDeleteForum={(id) => setForums(forums.filter(f => f.id !== id))}
-                  onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
+                  onDeleteForum={async (id) => {
+                    setForums(forums.filter(f => f.id !== id));
+                    if (cloudEnabled && supabase) await supabase.from('forums').delete().eq('id', id);
+                  }}
+                  onDeletePost={async (id) => {
+                    setPosts(posts.filter(p => p.id !== id));
+                    if (cloudEnabled && supabase) await supabase.from('posts').delete().eq('id', id);
+                  }}
                 />
               )}
 
@@ -356,13 +328,13 @@ export default function App() {
                   users={usersRegistry}
                   forums={forums}
                   onDismissReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
-                  onDeletePost={(postId) => {
+                  onDeletePost={async (postId) => {
                     setPosts(prev => prev.filter(p => p.id !== postId));
-                    setReports(prev => prev.filter(r => r.postId !== postId));
+                    if (cloudEnabled && supabase) await supabase.from('posts').delete().eq('id', postId);
                   }}
-                  onDeleteForum={(forumId) => {
+                  onDeleteForum={async (forumId) => {
                     setForums(prev => prev.filter(f => f.id !== forumId));
-                    setPosts(prev => prev.filter(p => p.forumId !== forumId));
+                    if (cloudEnabled && supabase) await supabase.from('forums').delete().eq('id', forumId);
                   }}
                   onBanUser={handleBanUser}
                 />
@@ -374,8 +346,8 @@ export default function App() {
                   friends={usersRegistry.filter(u => user.friendIds.includes(u.id))}
                   requests={friendRequests.filter(r => r.toId === user.id)}
                   messages={messages}
-                  onAccept={handleAcceptFriendRequest}
-                  onSendMessage={handleSendMessage}
+                  onAccept={(rid) => {}} // Lógica social local por ahora
+                  onSendMessage={(rid, text) => {}}
                 />
               )}
 
@@ -386,15 +358,18 @@ export default function App() {
                   allPosts={posts} 
                   usersRegistry={usersRegistry}
                   pendingRequests={friendRequests}
-                  onUpdateAvatar={(b) => {
+                  onUpdateAvatar={async (b) => {
                     const updatedUser = {...user, avatar: b};
                     setUser(updatedUser);
-                    setUsersRegistry(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+                    if (cloudEnabled && supabase) await supabase.from('users_registry').update({ avatar: b }).eq('id', user.id);
                   }}
                   onBack={() => setCurrentView('feed')}
                   onBanUser={handleBanUser}
-                  onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
-                  onSendFriendRequest={handleSendFriendRequest}
+                  onDeletePost={async (id) => {
+                    setPosts(posts.filter(p => p.id !== id));
+                    if (cloudEnabled && supabase) await supabase.from('posts').delete().eq('id', id);
+                  }}
+                  onSendFriendRequest={() => {}}
                   onUserClick={(id) => setTargetUserId(id)}
                   onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }}
                 />
@@ -404,20 +379,6 @@ export default function App() {
                 <div className="p-8">
                    <h1 className="text-2xl font-orbitron text-cyan-400 mb-4">{t('settings')}</h1>
                    <div className="space-y-6">
-                     <div className="bg-[#151921] border border-gray-800 p-6 rounded-2xl">
-                       <h2 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mb-4">Communication Interface</h2>
-                       <div className="flex gap-4">
-                         {(['en', 'es', 'pt'] as NexusLanguage[]).map(lang => (
-                           <button 
-                             key={lang} 
-                             onClick={() => setLanguage(lang)}
-                             className={`px-4 py-2 rounded-lg font-bold border ${language === lang ? 'bg-cyan-500/10 border-cyan-500 text-cyan-400' : 'border-gray-800 text-gray-500 hover:text-white'}`}
-                           >
-                             {lang.toUpperCase()}
-                           </button>
-                         ))}
-                       </div>
-                     </div>
                      <button onClick={() => {
                         localStorage.removeItem(`${STORAGE_KEY}_active_user`);
                         setUser(null);
@@ -430,15 +391,20 @@ export default function App() {
               )}
             </div>
           </main>
-          {isCreateForumOpen && <CreateForumModal onClose={() => setIsCreateForumOpen(false)} onSubmit={(n, d) => {
+          {isCreateForumOpen && <CreateForumModal onClose={() => setIsCreateForumOpen(false)} onSubmit={async (n, d) => {
             const nf: Forum = { id: 'f'+Date.now(), name: n, description: d, memberCount: 1, icon: '🌐', creatorId: user.id };
             setForums([nf, ...forums]);
             setUser({...user, createdForumIds: [...user.createdForumIds, nf.id], joinedForumIds: [...user.joinedForumIds, nf.id]});
+            if (cloudEnabled && supabase) {
+              await supabase.from('forums').insert(nf);
+              await supabase.from('users_registry').update({ createdForumIds: [...user.createdForumIds, nf.id], joinedForumIds: [...user.joinedForumIds, nf.id] }).eq('id', user.id);
+            }
             setIsCreateForumOpen(false);
           }} />}
-          {isCreatePostOpen && <CreatePostModal forums={forums.filter(f => user.joinedForumIds.includes(f.id))} onClose={() => setIsCreatePostOpen(false)} onSubmit={(c, f, i) => {
+          {isCreatePostOpen && <CreatePostModal forums={forums.filter(f => user.joinedForumIds.includes(f.id))} onClose={() => setIsCreatePostOpen(false)} onSubmit={async (c, f, i) => {
             const np: Post = { id: 'p'+Date.now(), authorId: user.id, authorName: user.username, authorAvatar: user.avatar, forumId: f, forumName: forums.find(fo=>fo.id===f)?.name || 'Nexus', content: c, imageUrl: i, timestamp: 'Just now', likes: 0, comments: 0 };
             setPosts([np, ...posts]);
+            if (cloudEnabled && supabase) await supabase.from('posts').insert(np);
             setIsCreatePostOpen(false);
           }} />}
           {reportingPostId && <ReportModal onClose={() => setReportingPostId(null)} onSubmit={(reason) => handleReportPost(reportingPostId, reason)} />}

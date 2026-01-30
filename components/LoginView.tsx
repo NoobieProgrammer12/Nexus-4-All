@@ -10,7 +10,7 @@ interface LoginViewProps {
 const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState(''); // Nota: En este demo la pass es simbólica
+  const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,17 +26,13 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
     const emailClean = email.trim().toLowerCase();
     const userClean = username.trim();
 
-    // 1. VALIDACIÓN DE LOGIN
     if (isLogin) {
       const existingUser = usersRegistry.find(u => u.email?.toLowerCase() === emailClean);
-      
       if (!existingUser) {
         setErrorMsg("ACCESS DENIED: Account does not exist in Nexus database.");
         setLoading(false);
         return;
       }
-
-      // Login directo sin 2-step (Eliminado según solicitud)
       setTimeout(() => {
         onLogin({
           id: existingUser.id,
@@ -45,32 +41,24 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
           isGuest: false,
         }, 'login');
       }, 600);
-    } 
-    // 2. VALIDACIÓN DE REGISTRO (SIGNUP)
-    else {
-      // Filtro: Verificar si el email ya existe
+    } else {
       const emailExists = usersRegistry.some(u => u.email?.toLowerCase() === emailClean);
       if (emailExists) {
         setErrorMsg("SIGNAL CONFLICT: This email is already registered.");
         setLoading(false);
         return;
       }
-
-      // Filtro: Verificar si el username ya existe (Evitar duplicados)
       const nameExists = usersRegistry.some(u => u.username.toLowerCase() === userClean.toLowerCase());
       if (nameExists) {
         setErrorMsg("IDENTITY CONFLICT: This username is already taken.");
         setLoading(false);
         return;
       }
-
       if (userClean.length < 3) {
         setErrorMsg("ERROR: Username too short.");
         setLoading(false);
         return;
       }
-
-      // Registro exitoso
       setTimeout(() => {
         onLogin({
           username: userClean,
@@ -112,7 +100,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
         )}
       </div>
 
-      {/* Background Decor */}
       <div className="absolute inset-0 z-0 opacity-10 pointer-events-none">
         <div className="absolute top-0 -left-20 w-[500px] h-[500px] bg-cyan-600 rounded-full blur-[120px] animate-pulse"></div>
         <div className="absolute bottom-0 -right-20 w-[500px] h-[500px] bg-purple-600 rounded-full blur-[120px] animate-pulse delay-1000"></div>
