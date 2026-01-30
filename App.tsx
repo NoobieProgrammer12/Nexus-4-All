@@ -94,6 +94,15 @@ export default function App() {
     localStorage.setItem(`${STORAGE_KEY}_messages`, JSON.stringify(messages));
   }, [user, usersRegistry, posts, forums, notifications, friendRequests, messages, isLoaded]);
 
+  // Si hay búsqueda activa, cambiar vista a search
+  useEffect(() => {
+    if (searchQuery.trim().length > 0) {
+      setCurrentView('search');
+    } else if (currentView === 'search') {
+      setCurrentView('feed');
+    }
+  }, [searchQuery]);
+
   const handleSendFriendRequest = (toId: string) => {
     if (!user) return;
     if (friendRequests.some(r => (r.fromId === user.id && r.toId === toId) || (r.fromId === toId && r.toId === user.id))) {
@@ -152,7 +161,6 @@ export default function App() {
       }
     }
 
-    // Creating new user or finalizing guest
     const newUser: User = {
       id: userData.id || 'u' + Date.now(),
       username: userData.username || 'Explorer',
@@ -209,8 +217,63 @@ export default function App() {
             />
             
             <div className="flex-1 overflow-y-auto">
-              {currentView === 'feed' && <Feed posts={posts} joinedForumIds={user.joinedForumIds} onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }} onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }} onUpdateForumIcon={()=>{}} />}
+              {currentView === 'feed' && (
+                <Feed 
+                  posts={posts} 
+                  joinedForumIds={user.joinedForumIds} 
+                  onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }} 
+                  onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }} 
+                  onUpdateForumIcon={()=>{}} 
+                />
+              )}
+
+              {currentView === 'forum' && (
+                <Feed 
+                  posts={posts} 
+                  activeForum={forums.find(f => f.id === activeForumId)}
+                  isJoined={user.joinedForumIds.includes(activeForumId || '')}
+                  isOwner={user.createdForumIds.includes(activeForumId || '')}
+                  isAdmin={user.isAdmin}
+                  onJoin={() => {
+                    if (!activeForumId) return;
+                    const isJoined = user.joinedForumIds.includes(activeForumId);
+                    const updatedUser = {
+                      ...user,
+                      joinedForumIds: isJoined 
+                        ? user.joinedForumIds.filter(id => id !== activeForumId) 
+                        : [...user.joinedForumIds, activeForumId]
+                    };
+                    setUser(updatedUser);
+                    setUsersRegistry(prev => prev.map(u => u.id === user.id ? updatedUser : u));
+                    setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, memberCount: f.memberCount + (isJoined ? -1 : 1) } : f));
+                  }}
+                  onDeleteForum={(id) => {
+                    setForums(forums.filter(f => f.id !== id));
+                    setCurrentView('feed');
+                    setActiveForumId(null);
+                  }}
+                  onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
+                  joinedForumIds={user.joinedForumIds}
+                  onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }} 
+                  onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }} 
+                  onUpdateForumIcon={(b) => setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, icon: b } : f))}
+                />
+              )}
               
+              {currentView === 'search' && (
+                <SearchView 
+                  query={searchQuery}
+                  posts={posts.filter(p => p.content.toLowerCase().includes(searchQuery.toLowerCase()))}
+                  forums={forums.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))}
+                  users={usersRegistry.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()))}
+                  isAdmin={user.isAdmin}
+                  onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }}
+                  onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }}
+                  onDeleteForum={(id) => setForums(forums.filter(f => f.id !== id))}
+                  onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
+                />
+              )}
+
               {currentView === 'friends' && (
                 <FriendsView 
                   user={user} 
