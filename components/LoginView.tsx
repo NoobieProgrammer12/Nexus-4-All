@@ -1,6 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User } from '../types';
+import { supabase } from '../supabase';
 
 interface LoginViewProps {
   onLogin: (user: Partial<User>, mode: 'login' | 'signup') => void;
@@ -14,56 +15,62 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [mfaCode, setMfaCode] = useState(['', '', '', '', '', '']);
-  const [generatedCode, setGeneratedCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showSystemAlert, setShowSystemAlert] = useState(false);
 
   // Admin Portal logic
   const [showAdminEntry, setShowAdminEntry] = useState(false);
   const [adminKey, setAdminKey] = useState('');
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setLoading(true);
 
-    setTimeout(() => {
-      const existingUser = usersRegistry.find(u => u.email?.toLowerCase() === email.trim().toLowerCase());
+    // Verification check for local registry
+    const existingUser = usersRegistry.find(u => u.email?.toLowerCase() === email.trim().toLowerCase());
 
-      if (isLogin) {
-        if (!existingUser) {
-          setErrorMsg("Account not detected in Nexus archives.");
-          setLoading(false);
-          return;
-        }
-        // Proceed to MFA
-        initiateMFA();
-      } else {
-        if (existingUser) {
-          setErrorMsg("This communication signal is already registered.");
-          setLoading(false);
-          return;
-        }
-        if (!username.trim()) {
-          setErrorMsg("Explorer handle is required for registration.");
-          setLoading(false);
-          return;
-        }
-        // Proceed to MFA
-        initiateMFA();
-      }
+    if (isLogin && !existingUser) {
+      setErrorMsg("Account not detected in Nexus archives.");
       setLoading(false);
-    }, 1200);
-  };
+      return;
+    }
 
-  const initiateMFA = () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedCode(code);
-    setStep('mfa');
-    setShowSystemAlert(true);
-    // Auto-hide alert after 8 seconds
-    setTimeout(() => setShowSystemAlert(false), 8000);
+    if (!isLogin && existingUser) {
+      setErrorMsg("This communication signal is already registered.");
+      setLoading(false);
+      return;
+    }
+
+    if (!isLogin && !username.trim()) {
+      setErrorMsg("Explorer handle is required for registration.");
+      setLoading(false);
+      return;
+    }
+
+    // Initiate Real OTP via Supabase
+    if (!supabase) {
+      setErrorMsg("NEXUS CLOUD OFFLINE: Please configure Supabase keys in environment.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: {
+          shouldCreateUser: !isLogin,
+        },
+      });
+
+      if (error) throw error;
+
+      setStep('mfa');
+    } catch (err: any) {
+      setErrorMsg(`HANDSHAKE FAILED: ${err.message || 'Unknown protocol error'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMfaChange = (index: number, value: string) => {
@@ -72,28 +79,49 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
     newCode[index] = value;
     setMfaCode(newCode);
 
-    // Auto-focus next
+    // Auto-focus next input
     if (value && index < 5) {
       const nextInput = document.getElementById(`mfa-${index + 1}`);
       nextInput?.focus();
     }
   };
 
-  const verifyMFA = () => {
+  const verifyMFA = async () => {
     const entered = mfaCode.join('');
-    if (entered === generatedCode) {
-      setLoading(true);
-      setTimeout(() => {
-        onLogin({
-          username: isLogin ? usersRegistry.find(u => u.email === email)?.username : username.trim(),
-          email: email.trim(),
-          isGuest: false,
-        }, isLogin ? 'login' : 'signup');
-      }, 1000);
-    } else {
-      setErrorMsg("INVALID ACCESS CODE. RETRY HANDSHAKE.");
+    if (entered.length < 6) return;
+    
+    setLoading(true);
+    setErrorMsg(null);
+
+    if (!supabase) {
+      setErrorMsg("NEXUS CLOUD DISCONNECTED.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: entered,
+        type: 'email',
+      });
+
+      if (error) throw error;
+
+      // OTP Success - Finalize Login/Signup in the app state
+      const existingUser = usersRegistry.find(u => u.email === email.trim());
+      onLogin({
+        username: isLogin && existingUser ? existingUser.username : username.trim(),
+        email: email.trim(),
+        isGuest: false,
+      }, isLogin ? 'login' : 'signup');
+
+    } catch (err: any) {
+      setErrorMsg("INVALID CIPHER DETECTED. CHECK YOUR EMAIL AND RETRY.");
       setMfaCode(['', '', '', '', '', '']);
       document.getElementById('mfa-0')?.focus();
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -141,24 +169,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
           </form>
         )}
       </div>
-
-      {/* 2FA CODE NOTIFICATION SIMULATION */}
-      {showSystemAlert && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[100] w-full max-w-sm animate-in slide-in-from-top-10 duration-500">
-          <div className="mx-4 bg-[#1a1f2b] border-l-4 border-cyan-500 p-4 rounded-r-xl shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-cyan-500/20 rounded-full flex items-center justify-center text-cyan-400 animate-pulse">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd"></path></svg>
-              </div>
-              <div className="flex-1">
-                <p className="text-[10px] font-orbitron font-bold text-cyan-400 uppercase tracking-tighter">Secure Link Established</p>
-                <p className="text-xs text-white">Your access code is: <span className="font-mono font-bold text-lg tracking-widest bg-cyan-500/10 px-2 rounded">{generatedCode}</span></p>
-              </div>
-              <button onClick={() => setShowSystemAlert(false)} className="text-gray-500 hover:text-white">✕</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Decorative Background */}
       <div className="absolute inset-0 z-0 opacity-10 pointer-events-none">
@@ -255,7 +265,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
                 <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
               </div>
               <h2 className="text-lg font-orbitron font-bold text-white mb-1 uppercase">2-Step Verification</h2>
-              <p className="text-xs text-gray-500">Please enter the 6-digit cipher sent to your device.</p>
+              <p className="text-xs text-gray-500">A security cipher has been sent to your Gmail. Please enter it below.</p>
             </div>
 
             <div className="grid grid-cols-6 gap-2 mb-8">
