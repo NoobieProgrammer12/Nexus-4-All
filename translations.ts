@@ -39,7 +39,7 @@ export const translations = {
     mute: "Silenciar",
     account_protocol: "Protocolo de Cuenta",
     terminate_session: "Terminar Sesión",
-    logout: "Cerras Sesion",
+    logout: "Cerrar Sesión",
     comm_lang: "Idioma de Comunicación",
     nexus_ver: "Versión de Nexus",
     guest_mode: "Modo Invitado",
@@ -56,7 +56,19 @@ export const translations = {
     signal_transmissions: "Transmisiones de Señal",
     my_joined: "Mis Foros",
     created_forums: "Foros Creados",
-    local_sync: "Sincronización Activa"
+    local_sync: "Sincronización Activa",
+    dev_hub: "Centro Dev",
+    report: "Reportar",
+    report_post: "Denunciar Señal",
+    report_reason: "Razón de la Denuncia",
+    spam: "Spam / Basura",
+    harassment: "Acoso",
+    hate_speech: "Discurso de Odio",
+    misinformation: "Desinformación",
+    other: "Otro",
+    dismiss: "Desestimar",
+    ban_user: "Banear Usuario",
+    terminate_sector: "Eliminar Sector"
   },
   en: {
     home: "Home Feed",
@@ -114,7 +126,19 @@ export const translations = {
     signal_transmissions: "Signal Transmissions",
     my_joined: "My Joined Forums",
     created_forums: "Forums Created",
-    local_sync: "Local Sync Active"
+    local_sync: "Local Sync Active",
+    dev_hub: "Dev Hub",
+    report: "Report",
+    report_post: "Report Signal",
+    report_reason: "Reason for Report",
+    spam: "Spam",
+    harassment: "Harassment",
+    hate_speech: "Hate Speech",
+    misinformation: "Misinformation",
+    other: "Other",
+    dismiss: "Dismiss",
+    ban_user: "Ban User",
+    terminate_sector: "Terminate Sector"
   },
   pt: {
     home: "Início",
@@ -172,6 +196,18 @@ export const translations = {
     signal_transmissions: "Transmissões de Sinal",
     my_joined: "Meus Fóruns",
     created_forums: "Fóruns Criados",
-    local_sync: "Sincronização Ativa"
+    local_sync: "Sincronização Ativa",
+    dev_hub: "Central Dev",
+    report: "Reportar",
+    report_post: "Denunciar Sinal",
+    report_reason: "Razão da Denúncia",
+    spam: "Spam",
+    harassment: "Assédio",
+    hate_speech: "Discurso de Ódio",
+    misinformation: "Desinformação",
+    other: "Outro",
+    dismiss: "Desestimar",
+    ban_user: "Banir Usuário",
+    terminate_sector: "Excluir Setor"
   }
 };

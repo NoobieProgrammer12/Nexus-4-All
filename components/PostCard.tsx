@@ -8,9 +8,10 @@ interface PostCardProps {
   onForumClick: (forumId: string) => void;
   isAdmin?: boolean;
   onDelete?: (postId: string) => void;
+  onReport?: (postId: string) => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, onUserClick, onForumClick, isAdmin, onDelete }) => {
+const PostCard: React.FC<PostCardProps> = ({ post, onUserClick, onForumClick, isAdmin, onDelete, onReport }) => {
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState(post.likes);
   const [copied, setCopied] = useState(false);
@@ -22,23 +23,34 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUserClick, onForumClick, is
 
   const handleShare = () => {
     setCopied(true);
-    // Simulación de copiar al portapapeles
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <div className="bg-[#151921] border border-gray-800 hover:border-cyan-500/30 rounded-2xl p-4 transition-all group shadow-sm hover:shadow-cyan-500/5 relative">
-      {isAdmin && (
+      <div className="absolute top-4 right-4 flex space-x-2 z-10">
         <button 
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete?.(post.id); }}
-          className="absolute top-4 right-4 p-2 bg-red-600/20 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all z-[10] border border-red-500/30"
-          title="Admin: Delete Post"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReport?.(post.id); }}
+          className="p-2 text-gray-600 hover:text-amber-500 transition-all"
+          title="Report Post"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
           </svg>
         </button>
-      )}
+        {isAdmin && (
+          <button 
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete?.(post.id); }}
+            className="p-2 bg-red-600/20 text-red-500 rounded-lg hover:bg-red-600 hover:text-white transition-all border border-red-500/30"
+            title="Admin: Delete Post"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        )}
+      </div>
+
       <div className="flex items-start space-x-3">
         <img 
           src={post.authorAvatar} 
@@ -66,7 +78,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, onUserClick, onForumClick, is
             <span className="text-gray-500 text-[10px] uppercase font-bold tracking-tighter">{post.timestamp}</span>
           </div>
 
-          <p className="text-gray-300 text-sm leading-relaxed mb-4 whitespace-pre-wrap">
+          <p className="text-gray-300 text-sm leading-relaxed mb-4 whitespace-pre-wrap pr-8">
             {post.content}
           </p>
 

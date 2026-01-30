@@ -12,6 +12,7 @@ interface FeedProps {
   isAdmin?: boolean;
   onDeletePost?: (postId: string) => void;
   onDeleteForum?: (forumId: string) => void;
+  onReportPost?: (postId: string) => void;
   joinedForumIds: string[];
   onJoin?: () => void;
   onUserClick: (userId: string) => void;
@@ -29,6 +30,7 @@ const Feed: React.FC<FeedProps> = ({
   isAdmin,
   onDeletePost,
   onDeleteForum,
+  onReportPost,
   joinedForumIds,
   onJoin, 
   onUserClick, 
@@ -62,16 +64,16 @@ const Feed: React.FC<FeedProps> = ({
     <div className="max-w-2xl mx-auto py-6 px-4">
       {activeForum ? (
         <div className="mb-8 bg-[#151921] border border-gray-800 rounded-2xl overflow-hidden relative">
-          {isAdmin && (
+          {(isAdmin || isOwner) && (
             <button 
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDeleteForum?.(activeForum.id); }}
-              className="absolute top-4 right-4 z-[9999] px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-orbitron font-bold text-[10px] uppercase shadow-2xl border-2 border-red-500/50 cursor-pointer pointer-events-auto"
+              className="absolute top-4 right-4 z-[999] px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-orbitron font-bold text-[10px] uppercase shadow-2xl border-2 border-red-500/50 cursor-pointer"
             >
               Terminate Sector
             </button>
           )}
           <div className="h-24 bg-gradient-to-r from-purple-900/40 to-cyan-900/40 relative">
-            <div onClick={() => isOwner && fileInputRef.current?.click()} className="absolute -bottom-6 left-6 w-20 h-20 bg-[#151921] rounded-2xl border border-gray-800 flex items-center justify-center text-3xl overflow-hidden shadow-lg">
+            <div onClick={() => isOwner && fileInputRef.current?.click()} className="absolute -bottom-6 left-6 w-20 h-20 bg-[#151921] rounded-2xl border border-gray-800 flex items-center justify-center text-3xl overflow-hidden shadow-lg cursor-pointer hover:border-cyan-500 transition-all">
               {activeForum.icon.startsWith('data:') ? <img src={activeForum.icon} className="w-full h-full object-cover" /> : activeForum.icon}
               <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -132,6 +134,7 @@ const Feed: React.FC<FeedProps> = ({
               onForumClick={onForumClick} 
               isAdmin={isAdmin} 
               onDelete={onDeletePost}
+              onReport={onReportPost}
             />
           ))}
         </div>

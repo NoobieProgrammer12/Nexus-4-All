@@ -19,11 +19,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, activeForumId, setView, 
   const { t } = useContext(LanguageContext);
   const cloudEnabled = isCloudActive();
 
-  const NavItem = ({ icon, label, id, active }: { icon: string, label: string, id: View, active: boolean }) => (
+  const NavItem = ({ icon, label, id, active, color }: { icon: string, label: string, id: View, active: boolean, color?: string }) => (
     <button
       onClick={() => setView(id)}
       className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-        active ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'text-gray-400 hover:bg-gray-800'
+        active 
+          ? `${color || 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'}` 
+          : 'text-gray-400 hover:bg-gray-800'
       }`}
     >
       <span className="text-xl">{icon}</span>
@@ -83,6 +85,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, activeForumId, setView, 
           <NavItem icon="👥" label={t('friends')} id="friends" active={currentView === 'friends'} />
           <NavItem icon="👤" label={t('profile')} id="profile" active={currentView === 'profile'} />
           <NavItem icon="⚙️" label={t('settings')} id="settings" active={currentView === 'settings'} />
+          
+          {isAdmin && (
+            <div className="pt-2 border-t border-red-500/20 mt-2">
+               <NavItem 
+                icon="🛠️" 
+                label={t('dev_hub')} 
+                id="dev-hub" 
+                active={currentView === 'dev-hub'} 
+                color="bg-red-500/10 text-red-400 border border-red-500/20"
+              />
+            </div>
+          )}
         </div>
 
         <ForumList title={t('my_joined')} list={joinedForums} colorClass="text-purple-400" />

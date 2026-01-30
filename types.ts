@@ -14,6 +14,16 @@ export interface User {
   friendIds: string[];
 }
 
+export interface Report {
+  id: string;
+  postId: string;
+  postContent: string;
+  authorName: string;
+  reporterName: string;
+  reason: string;
+  timestamp: string;
+}
+
 export interface FriendRequest {
   id: string;
   fromId: string;
@@ -65,4 +75,4 @@ export interface NexusNotification {
   read: boolean;
 }
 
-export type View = 'feed' | 'forum' | 'profile' | 'settings' | 'search' | 'friends';
+export type View = 'feed' | 'forum' | 'profile' | 'settings' | 'search' | 'friends' | 'dev-hub';

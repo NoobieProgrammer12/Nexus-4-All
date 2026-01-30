@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, createContext } from 'react';
-import { User, Post, Forum, View, NexusNotification, FriendRequest, DirectMessage } from './types';
+import { User, Post, Forum, View, NexusNotification, FriendRequest, DirectMessage, Report } from './types';
 import { translations } from './translations';
 import LoginView from './components/LoginView';
 import Sidebar from './components/Sidebar';
@@ -9,8 +9,10 @@ import Feed from './components/Feed';
 import ProfileView from './components/ProfileView';
 import SearchView from './components/SearchView';
 import FriendsView from './components/FriendsView';
+import DevHubView from './components/DevHubView';
 import CreateForumModal from './components/CreateForumModal';
 import CreatePostModal from './components/CreatePostModal';
+import ReportModal from './components/ReportModal';
 
 const STORAGE_KEY = 'nexus_4_all_social_v1';
 
@@ -39,6 +41,7 @@ export default function App() {
   const [notifications, setNotifications] = useState<NexusNotification[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const [language, setLanguage] = useState<NexusLanguage>('en');
   const [systemToast, setSystemToast] = useState<{message: string, type: 'info' | 'error'} | null>(null);
 
@@ -51,6 +54,7 @@ export default function App() {
       const n = localStorage.getItem(`${STORAGE_KEY}_notifications`);
       const fr = localStorage.getItem(`${STORAGE_KEY}_friend_requests`);
       const m = localStorage.getItem(`${STORAGE_KEY}_messages`);
+      const r = localStorage.getItem(`${STORAGE_KEY}_reports`);
       
       let loadedRegistry = reg ? JSON.parse(reg) : INITIAL_USERS;
       setUsersRegistry(loadedRegistry);
@@ -61,6 +65,7 @@ export default function App() {
       setNotifications(n ? JSON.parse(n) : []);
       setFriendRequests(fr ? JSON.parse(fr) : []);
       setMessages(m ? JSON.parse(m) : []);
+      setReports(r ? JSON.parse(r) : []);
     } catch (e) {
       console.error("Nexus Storage Error", e);
     } finally {
@@ -81,6 +86,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateForumOpen, setIsCreateForumOpen] = useState(false);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+  const [reportingPostId, setReportingPostId] = useState<string | null>(null);
 
   // Persistence
   useEffect(() => {
@@ -92,9 +98,10 @@ export default function App() {
     localStorage.setItem(`${STORAGE_KEY}_notifications`, JSON.stringify(notifications));
     localStorage.setItem(`${STORAGE_KEY}_friend_requests`, JSON.stringify(friendRequests));
     localStorage.setItem(`${STORAGE_KEY}_messages`, JSON.stringify(messages));
-  }, [user, usersRegistry, posts, forums, notifications, friendRequests, messages, isLoaded]);
+    localStorage.setItem(`${STORAGE_KEY}_reports`, JSON.stringify(reports));
+  }, [user, usersRegistry, posts, forums, notifications, friendRequests, messages, reports, isLoaded]);
 
-  // Si hay búsqueda activa, cambiar vista a search
+  // View switch logic
   useEffect(() => {
     if (searchQuery.trim().length > 0) {
       setCurrentView('search');
@@ -102,6 +109,34 @@ export default function App() {
       setCurrentView('feed');
     }
   }, [searchQuery]);
+
+  const handleReportPost = (postId: string, reason: string) => {
+    const post = posts.find(p => p.id === postId);
+    if (!post || !user) return;
+    const newReport: Report = {
+      id: `rep-${Date.now()}`,
+      postId,
+      postContent: post.content,
+      authorName: post.authorName,
+      reporterName: user.username,
+      reason,
+      timestamp: new Date().toLocaleString()
+    };
+    setReports([newReport, ...reports]);
+    setReportingPostId(null);
+    showToast("Signal reported to Dev Hub.");
+  };
+
+  const handleBanUser = (userId: string) => {
+    if (userId === 'admin') return;
+    setUsersRegistry(prev => prev.filter(u => u.id !== userId));
+    setPosts(prev => prev.filter(p => p.authorId !== userId));
+    setReports(prev => prev.filter(r => {
+      const post = posts.find(p => p.id === r.postId);
+      return post?.authorId !== userId;
+    }));
+    showToast("Explorer banned and wiped from Nexus.");
+  };
 
   const handleSendFriendRequest = (toId: string) => {
     if (!user) return;
@@ -224,6 +259,7 @@ export default function App() {
                   onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }} 
                   onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }} 
                   onUpdateForumIcon={()=>{}} 
+                  onReportPost={(id) => setReportingPostId(id)}
                 />
               )}
 
@@ -253,6 +289,7 @@ export default function App() {
                     setActiveForumId(null);
                   }}
                   onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
+                  onReportPost={(id) => setReportingPostId(id)}
                   joinedForumIds={user.joinedForumIds}
                   onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }} 
                   onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }} 
@@ -271,6 +308,24 @@ export default function App() {
                   onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }}
                   onDeleteForum={(id) => setForums(forums.filter(f => f.id !== id))}
                   onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
+                />
+              )}
+
+              {currentView === 'dev-hub' && user.isAdmin && (
+                <DevHubView 
+                  reports={reports}
+                  users={usersRegistry}
+                  forums={forums}
+                  onDismissReport={(id) => setReports(prev => prev.filter(r => r.id !== id))}
+                  onDeletePost={(postId) => {
+                    setPosts(prev => prev.filter(p => p.id !== postId));
+                    setReports(prev => prev.filter(r => r.postId !== postId));
+                  }}
+                  onDeleteForum={(forumId) => {
+                    setForums(prev => prev.filter(f => f.id !== forumId));
+                    setPosts(prev => prev.filter(p => p.forumId !== forumId));
+                  }}
+                  onBanUser={handleBanUser}
                 />
               )}
 
@@ -298,7 +353,7 @@ export default function App() {
                     setUsersRegistry(prev => prev.map(u => u.id === user.id ? updatedUser : u));
                   }}
                   onBack={() => setCurrentView('feed')}
-                  onBanUser={() => {}}
+                  onBanUser={handleBanUser}
                   onDeletePost={(id) => setPosts(posts.filter(p => p.id !== id))}
                   onSendFriendRequest={handleSendFriendRequest}
                   onUserClick={(id) => setTargetUserId(id)}
@@ -346,6 +401,7 @@ export default function App() {
             setPosts([np, ...posts]);
             setIsCreatePostOpen(false);
           }} />}
+          {reportingPostId && <ReportModal onClose={() => setReportingPostId(null)} onSubmit={(reason) => handleReportPost(reportingPostId, reason)} />}
         </div>
       )}
     </LanguageContext.Provider>
