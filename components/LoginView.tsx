@@ -27,28 +27,28 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
     setErrorMsg(null);
     setLoading(true);
 
-    // Verification check for local registry
+    // Initial registry check
     const existingUser = usersRegistry.find(u => u.email?.toLowerCase() === email.trim().toLowerCase());
 
     if (isLogin && !existingUser) {
-      setErrorMsg("Account not detected in Nexus archives.");
+      setErrorMsg("NEXUS ERROR: Account not found in database.");
       setLoading(false);
       return;
     }
 
     if (!isLogin && existingUser) {
-      setErrorMsg("This communication signal is already registered.");
+      setErrorMsg("SIGNAL CONFLICT: This email address is already registered.");
       setLoading(false);
       return;
     }
 
     if (!isLogin && !username.trim()) {
-      setErrorMsg("Explorer handle is required for registration.");
+      setErrorMsg("IDENTITY REQUIRED: Please provide an explorer handle.");
       setLoading(false);
       return;
     }
 
-    // Initiate Real OTP via Supabase
+    // Trigger Real Email OTP
     if (!supabase) {
       setErrorMsg("NEXUS CLOUD OFFLINE: Please configure Supabase keys in environment.");
       setLoading(false);
@@ -65,9 +65,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
 
       if (error) throw error;
 
+      // Move to verification step
       setStep('mfa');
     } catch (err: any) {
-      setErrorMsg(`HANDSHAKE FAILED: ${err.message || 'Unknown protocol error'}`);
+      setErrorMsg(`HANDSHAKE FAILED: ${err.message || 'System protocol error'}`);
     } finally {
       setLoading(false);
     }
@@ -79,7 +80,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
     newCode[index] = value;
     setMfaCode(newCode);
 
-    // Auto-focus next input
+    // Auto-focus next digit slot
     if (value && index < 5) {
       const nextInput = document.getElementById(`mfa-${index + 1}`);
       nextInput?.focus();
@@ -108,7 +109,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
 
       if (error) throw error;
 
-      // OTP Success - Finalize Login/Signup in the app state
+      // Successful Handshake
       const existingUser = usersRegistry.find(u => u.email === email.trim());
       onLogin({
         username: isLogin && existingUser ? existingUser.username : username.trim(),
@@ -117,7 +118,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
       }, isLogin ? 'login' : 'signup');
 
     } catch (err: any) {
-      setErrorMsg("INVALID CIPHER DETECTED. CHECK YOUR EMAIL AND RETRY.");
+      setErrorMsg("INVALID CIPHER: Please check your Gmail for the correct code.");
       setMfaCode(['', '', '', '', '', '']);
       document.getElementById('mfa-0')?.focus();
     } finally {
@@ -141,26 +142,26 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
         friendIds: []
       }, 'login');
     } else {
-      setErrorMsg("SECURITY BREACH DETECTED: INVALID ADMIN KEY");
+      setErrorMsg("SECURITY BREACH: ACCESS DENIED");
       setAdminKey('');
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-[#0b0e14] overflow-hidden relative font-inter">
-      {/* Admin Door */}
+      {/* System Admin Port */}
       <div className="absolute top-6 right-6 z-50">
         <button 
           onClick={() => setShowAdminEntry(!showAdminEntry)}
           className="px-4 py-2 bg-cyan-950/20 border border-cyan-500/30 rounded-xl text-[10px] font-orbitron font-bold text-cyan-400 uppercase tracking-widest hover:bg-cyan-500/10 transition-all"
         >
-          {showAdminEntry ? 'Close Terminal' : 'Admin Terminal'}
+          {showAdminEntry ? 'Abort Link' : 'Admin Terminal'}
         </button>
         {showAdminEntry && (
           <form onSubmit={handleAdminSubmit} className="absolute right-0 mt-2 w-48 bg-[#151921] border border-cyan-500/50 rounded-xl p-3 shadow-2xl animate-in fade-in slide-in-from-top-2">
             <input 
               type="password"
-              placeholder="System Passphrase..."
+              placeholder="System Cipher..."
               value={adminKey}
               onChange={(e) => setAdminKey(e.target.value)}
               className="w-full bg-black border border-gray-800 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-cyan-500"
@@ -170,7 +171,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
         )}
       </div>
 
-      {/* Decorative Background */}
+      {/* Kinetic Background Elements */}
       <div className="absolute inset-0 z-0 opacity-10 pointer-events-none">
         <div className="absolute top-0 -left-20 w-[500px] h-[500px] bg-cyan-600 rounded-full blur-[120px] animate-pulse"></div>
         <div className="absolute bottom-0 -right-20 w-[500px] h-[500px] bg-purple-600 rounded-full blur-[120px] animate-pulse delay-1000"></div>
@@ -207,7 +208,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
               </div>
             )}
             <div>
-              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Quantum Address</label>
+              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">GMAIL</label>
               <input
                 type="email"
                 required
@@ -218,7 +219,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Primary Cipher</label>
+              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1.5 ml-1">Password</label>
               <input
                 type="password"
                 required
@@ -245,7 +246,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
             </button>
             
             <p className="text-center text-xs text-gray-500 pt-4">
-              {isLogin ? "No signal detected?" : "Signal already established?"}{' '}
+              {isLogin ? "New to the Nexus?" : "Signal already established?"}{' '}
               <button
                 type="button"
                 onClick={() => {
@@ -265,7 +266,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
                 <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
               </div>
               <h2 className="text-lg font-orbitron font-bold text-white mb-1 uppercase">2-Step Verification</h2>
-              <p className="text-xs text-gray-500">A security cipher has been sent to your Gmail. Please enter it below.</p>
+              <p className="text-xs text-gray-500">A security cipher has been transmitted to your Gmail inbox. Enter it below.</p>
             </div>
 
             <div className="grid grid-cols-6 gap-2 mb-8">
@@ -288,14 +289,14 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
               disabled={loading || mfaCode.some(d => !d)}
               className="w-full py-4 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:grayscale text-white font-bold rounded-xl shadow-lg transition-all uppercase tracking-widest font-orbitron text-[11px]"
             >
-              {loading ? 'Verifying...' : 'Authorize Access'}
+              {loading ? 'Validating...' : 'Authorize Access'}
             </button>
 
             <button 
               onClick={() => { setStep('auth'); setErrorMsg(null); }}
               className="w-full mt-4 py-2 text-gray-600 hover:text-gray-400 text-[10px] font-bold uppercase tracking-widest transition-colors"
             >
-              Back to credentials
+              Return to Credentials
             </button>
           </div>
         )}
@@ -306,7 +307,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
               <div className="w-full border-t border-gray-800"></div>
             </div>
             <div className="relative flex justify-center text-[8px] uppercase font-bold tracking-[0.5em]">
-              <span className="bg-[#151921] px-4 text-gray-600">Auxiliary Entry</span>
+              <span className="bg-[#151921] px-4 text-gray-600">Bypass Protocol</span>
             </div>
           </div>
 
@@ -320,7 +321,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin, usersRegistry }) => {
             }}
             className="w-full py-3 bg-gray-800/20 hover:bg-gray-800/50 text-gray-500 hover:text-gray-300 rounded-xl transition-all text-[10px] font-bold uppercase tracking-widest border border-gray-800/50"
           >
-            Enter as Anonymous Explorer
+            Enter In Guest Mode
           </button>
         </div>
       </div>
