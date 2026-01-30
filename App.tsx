@@ -69,7 +69,6 @@ export default function App() {
         const active = localStorage.getItem(`${STORAGE_KEY}_active_user`);
         if (active) setUser(JSON.parse(active));
         
-        // Cargar metadatos sociales adicionales de local (o cloud si se desea expandir)
         const n = localStorage.getItem(`${STORAGE_KEY}_notifications`);
         const fr = localStorage.getItem(`${STORAGE_KEY}_friend_requests`);
         const m = localStorage.getItem(`${STORAGE_KEY}_messages`);
@@ -210,6 +209,15 @@ export default function App() {
     showToast(mode === 'signup' ? "Nexus Account Established" : "Signal Synchronized");
   };
 
+  const updateSearchQuery = (q: string) => {
+    setSearchQuery(q);
+    if (q.trim().length > 0) {
+      setCurrentView('search');
+    } else if (currentView === 'search') {
+      setCurrentView('feed');
+    }
+  };
+
   if (!isLoaded) return <div className="min-h-screen bg-[#0b0e14] flex items-center justify-center font-orbitron text-cyan-400 text-center px-4">ESTABLISHING CONNECTION TO NEXUS...</div>;
 
   return (
@@ -230,20 +238,22 @@ export default function App() {
             currentView={currentView} 
             activeForumId={activeForumId}
             isAdmin={user.isAdmin}
-            setView={(v) => { setCurrentView(v); setActiveForumId(null); setTargetUserId(null); }} 
+            setView={(v) => { setCurrentView(v); setActiveForumId(null); setTargetUserId(null); setSearchQuery(''); }} 
             joinedForums={forums.filter(f => user.joinedForumIds.includes(f.id))}
             createdForums={forums.filter(f => user.createdForumIds.includes(f.id))}
-            onForumSelect={(id) => { setActiveForumId(id); setCurrentView('forum'); }}
+            onForumSelect={(id) => { setActiveForumId(id); setCurrentView('forum'); setSearchQuery(''); }}
             onCreateForum={() => setIsCreateForumOpen(true)}
           />
           
           <main className="flex-1 flex flex-col min-w-0">
             <Navbar 
-              searchQuery={searchQuery} setSearchQuery={setSearchQuery} 
-              user={user} notifications={notifications}
-              onNotificationClick={(n) => { setActiveForumId(n.forumId!); setCurrentView('forum'); }}
+              searchQuery={searchQuery} 
+              setSearchQuery={updateSearchQuery} 
+              user={user} 
+              notifications={notifications}
+              onNotificationClick={(n) => { setActiveForumId(n.forumId!); setCurrentView('forum'); setSearchQuery(''); }}
               onNewPost={() => setIsCreatePostOpen(true)}
-              onProfileClick={() => { setTargetUserId(user.id); setCurrentView('profile'); }}
+              onProfileClick={() => { setTargetUserId(user.id); setCurrentView('profile'); setSearchQuery(''); }}
             />
             
             <div className="flex-1 overflow-y-auto">
@@ -278,7 +288,7 @@ export default function App() {
                     setForums(prev => prev.map(f => f.id === activeForumId ? { ...f, memberCount: f.memberCount + (isNowJoined ? -1 : 1) } : f));
                     if (cloudEnabled && supabase) {
                       await supabase.from('users_registry').update({ joinedForumIds: updatedUser.joinedForumIds }).eq('id', user.id);
-                      await supabase.from('forums').update({ memberCount: forums.find(fo=>fo.id===activeForumId)!.memberCount + (isNowJoined ? -1 : 1) }).eq('id', activeForumId);
+                      await supabase.from('forums').update({ memberCount: (forums.find(fo=>fo.id===activeForumId)?.memberCount || 0) + (isNowJoined ? -1 : 1) }).eq('id', activeForumId);
                     }
                   }}
                   onDeleteForum={async (id) => {
@@ -305,12 +315,12 @@ export default function App() {
               {currentView === 'search' && (
                 <SearchView 
                   query={searchQuery}
-                  posts={posts.filter(p => p.content.toLowerCase().includes(searchQuery.toLowerCase()))}
+                  posts={posts.filter(p => p.content.toLowerCase().includes(searchQuery.toLowerCase()) || p.forumName.toLowerCase().includes(searchQuery.toLowerCase()))}
                   forums={forums.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))}
                   users={usersRegistry.filter(u => u.username.toLowerCase().includes(searchQuery.toLowerCase()))}
                   isAdmin={user.isAdmin}
-                  onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); }}
-                  onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); }}
+                  onUserClick={(id) => { setTargetUserId(id); setCurrentView('profile'); setSearchQuery(''); }}
+                  onForumClick={(id) => { setActiveForumId(id); setCurrentView('forum'); setSearchQuery(''); }}
                   onDeleteForum={async (id) => {
                     setForums(forums.filter(f => f.id !== id));
                     if (cloudEnabled && supabase) await supabase.from('forums').delete().eq('id', id);
@@ -346,7 +356,7 @@ export default function App() {
                   friends={usersRegistry.filter(u => user.friendIds.includes(u.id))}
                   requests={friendRequests.filter(r => r.toId === user.id)}
                   messages={messages}
-                  onAccept={(rid) => {}} // Lógica social local por ahora
+                  onAccept={(rid) => {}} 
                   onSendMessage={(rid, text) => {}}
                 />
               )}
@@ -394,15 +404,17 @@ export default function App() {
           {isCreateForumOpen && <CreateForumModal onClose={() => setIsCreateForumOpen(false)} onSubmit={async (n, d) => {
             const nf: Forum = { id: 'f'+Date.now(), name: n, description: d, memberCount: 1, icon: '🌐', creatorId: user.id };
             setForums([nf, ...forums]);
-            setUser({...user, createdForumIds: [...user.createdForumIds, nf.id], joinedForumIds: [...user.joinedForumIds, nf.id]});
+            const updatedUser = {...user, createdForumIds: [...user.createdForumIds, nf.id], joinedForumIds: [...user.joinedForumIds, nf.id]};
+            setUser(updatedUser);
             if (cloudEnabled && supabase) {
               await supabase.from('forums').insert(nf);
-              await supabase.from('users_registry').update({ createdForumIds: [...user.createdForumIds, nf.id], joinedForumIds: [...user.joinedForumIds, nf.id] }).eq('id', user.id);
+              await supabase.from('users_registry').update({ createdForumIds: updatedUser.createdForumIds, joinedForumIds: updatedUser.joinedForumIds }).eq('id', user.id);
             }
             setIsCreateForumOpen(false);
           }} />}
           {isCreatePostOpen && <CreatePostModal forums={forums.filter(f => user.joinedForumIds.includes(f.id))} onClose={() => setIsCreatePostOpen(false)} onSubmit={async (c, f, i) => {
-            const np: Post = { id: 'p'+Date.now(), authorId: user.id, authorName: user.username, authorAvatar: user.avatar, forumId: f, forumName: forums.find(fo=>fo.id===f)?.name || 'Nexus', content: c, imageUrl: i, timestamp: 'Just now', likes: 0, comments: 0 };
+            const forum = forums.find(fo=>fo.id===f);
+            const np: Post = { id: 'p'+Date.now(), authorId: user.id, authorName: user.username, authorAvatar: user.avatar, forumId: f, forumName: forum?.name || 'Nexus', content: c, imageUrl: i, timestamp: 'Just now', likes: 0, comments: 0 };
             setPosts([np, ...posts]);
             if (cloudEnabled && supabase) await supabase.from('posts').insert(np);
             setIsCreatePostOpen(false);
